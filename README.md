@@ -33,7 +33,7 @@ Everything stays on your machine. No accounts, no telemetry, no cloud. The only 
 - **Per-version galleries** — drag to reorder, star to set the cover, delete with a confirm, add from files or paste straight from the clipboard.
 - **Live preview stage** — the stage follows every change; the big viewer opens any picture full-size with zoom and pan.
 - **Thumbnails** — lightweight copies build automatically at import, so the grid never decodes a full-quality file.
-<img width="1365" height="767" alt="image" src="https://github.com/user-attachments/assets/f9e081ec-2d59-40cb-b318-96bce4c4b268" />
+<img width="1365" height="765" alt="image" src="https://github.com/user-attachments/assets/892a3d63-576a-413d-bd5a-be22186aa3fa" />
 
 ### ✍️ Prompt Compose
 - **Named parts** — split the prompt into named chunks, each with an include checkbox; the composed prompt updates as you check.
