@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+
+# build outputs (electron-forge / webpack)
+out/
+.webpack/
+dist/
+.cache/
+
+# signing — the certificate and anything secret NEVER enters the repo
+*.pfx
+*.p12
+*.cer
+*.key
+signing-cert*
+*.env
+.env*
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+npm-debug.log*
+
+# test / scratch artifacts
+coverage/
+*.png.orig
+
+# live-verification harness (sandbox-local, absolute paths — never ships)
+scripts/repro_mgr/

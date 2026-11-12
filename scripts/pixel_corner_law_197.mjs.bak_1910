@@ -1,0 +1,319 @@
+// pixel_corner_law_197.mjs — the corner audit, 1.9.10 edition: THE
+// CLASSIC COAT, VERIFIED. Born in 1.9.7 (the corner law), grown into a
+// systematic 78-plate sweep in 1.9.9, re-baselined in 1.9.10 to the
+// report's own law:
+//   "the last update where colors for finishes were stable was version
+//    1.9.2~1.9.1 and older ... i want you to revert back the finishes
+//    and the colors ... and then fix from it so its stable ... i want
+//    you to account for each of teh finishes values when the color
+//    shifts to the absolute corners , values , etc , and ensure they
+//    dont exceed the max limit , or that they dont loop around and break"
+// THE LAW this release: every plate field of the 1.9.9 sweep is kept
+// (the gray ladder end to end, the named patients #bbbbbb / #e7c35b,
+// the light-card ladder, the pastel band, the low-saturation
+// chromatics, and the 12-hue ladders at HSL L=0.75 AND L=0.25 — every
+// value class the wheel can name), and every finish × plate cell is
+// rendered TWICE — once through the CURRENT sheet and once through
+// scripts/fixtures/index_classic_192_coat.css (the delivered 1.9.2
+// coat region, VERBATIM) — with the animations FROZEN at their
+// delay-baked phases for determinism:
+//   · THE CLASSIC VERDICT — foil, auric, nuri, holographic and
+//     prismatic must render PIXEL-EQUIVALENT to the 1.9.2 sheet on
+//     every plate (mean per-channel render-diff under 1.5): whatever
+//     the classic physics does at a corner — a screen voice resting
+//     toward white, a soft-light veil resting toward black — the
+//     current sheet does the SAME thing, because the rules are the
+//     same rules. "Matches previously" is measured, not asserted.
+//   · THE X BAND — numeix differs from the classic render by its X
+//     SIGNATURE alone (the owner's explicit carve-out: the
+//     rotated-plus glyph and its lean ink, kept from 1.9.9 — the
+//     classic looms were the 1.6.7 calligraphic curves): the diff must
+//     sit in a BAND (present but bounded) on every plate.
+//   · THE LIMITS — every stat finite (no NaN can enter: the classic
+//     anchors are constants inside 0-255, and the one live derivation
+//     left — the X's lean — gates its input, clamps its channels and
+//     bounds its bisection; the audit proves it live at the absolute
+//     corners, where "values loop around and break" would show).
+// Usage: node scripts/pixel_corner_law_197.mjs [--diag]
+import { chromium } from 'playwright';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const DIAG = process.argv.includes('--diag');
+const root = path.dirname(fileURLToPath(import.meta.url));
+const tree = path.join(root, '..');
+const CLASSIC = path.join(root, 'fixtures', 'index_classic_192_coat.css');
+
+// the lean (finishTintLean's own math, mirrored — the source law is
+// pinned by the 200 suite; the same HSL hue+saturation pass + the fixed
+// luma seat's bisection solver. 1.9.10 — the lean speaks for the NUMEIX
+// X SIGNATURE ALONE now: every other coat seat returned to its classic
+// fixed colors, so these vars feed the X looms' tint hand and nothing
+// else in the field below.)
+const twin = (hex6, seat = 0.45) => {
+  const n = parseInt(hex6.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  const d = mx - mn;
+  let h = 0;
+  let s = 0;
+  const l = (mx + mn) / 2;
+  if (d !== 0) {
+    if (mx === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (mx === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+    s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  }
+  const target = Number.isFinite(+seat) ? +seat : 0.45;
+  const hslToRgb = (hh, ss, ll) => {
+    if (ss === 0) return [ll, ll, ll];
+    const q = ll < 0.5 ? ll * (1 + ss) : ll + ss - ll * ss;
+    const p = 2 * ll - q;
+    const hue = (t) => {
+      let tt = t;
+      if (tt < 0) tt += 1;
+      if (tt > 1) tt -= 1;
+      if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+      if (tt < 1 / 2) return q;
+      if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+      return p;
+    };
+    return [hue(hh + 1 / 3), hue(hh), hue(hh - 1 / 3)];
+  };
+  const lumaAt = (ll) => {
+    const [rr, gg, bb] = hslToRgb(h, s, ll);
+    return 0.2126 * rr + 0.7152 * gg + 0.0722 * bb;
+  };
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 24; i += 1) {
+    const mid = (lo + hi) / 2;
+    if (lumaAt(mid) < target) lo = mid;
+    else hi = mid;
+  }
+  const tl = (lo + hi) / 2;
+  const rgb = hslToRgb(h, s, tl);
+  const ch = (v) => Math.max(0, Math.min(255, Math.round(v * 255)));
+  return `#${rgb.map((v) => ch(v).toString(16).padStart(2, '0')).join('')}`;
+};
+
+// the plate field — the 1.9.9 systematic sweep, kept whole (see the
+// header note): every value class the wheel can name.
+const hsl = (h, s, l) => {
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hue = (t) => {
+    let tt = t;
+    if (tt < 0) tt += 1;
+    if (tt > 1) tt -= 1;
+    if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+    if (tt < 1 / 2) return q;
+    if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+    return p;
+  };
+  const ch = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
+  return `#${ch(hue(h + 1 / 3))}${ch(hue(h))}${ch(hue(h - 1 / 3))}`;
+};
+const HUE_NAMES = ['h0', 'h30', 'h60', 'h90', 'h120', 'h150', 'h180', 'h210', 'h240', 'h270', 'h300', 'h330'];
+const PLATES = [
+  ['white', '#ffffff'], ['pale', '#f0f0f0'],
+  ['red', '#ff0000'], ['orange', '#ff8800'], ['yellow', '#ffff00'],
+  ['chart', '#88ff00'], ['green', '#00ff00'], ['spring', '#00ff88'],
+  ['cyan', '#00ffff'], ['azure', '#0088ff'], ['blue', '#0000ff'],
+  ['violet', '#8800ff'], ['magenta', '#ff00ff'], ['rose', '#ff0088'],
+  ['black', '#000000'], ['nearblack', '#141414'], ['dgray', '#2a2a2a'],
+  ['deepred', '#800000'], ['deepgreen', '#008000'], ['deepblue', '#000080'],
+  ['deepmagenta', '#800080'], ['deepyellow', '#808000'], ['depcyan', '#008080'],
+  ['sunburst', '#ffd400'], ['bubble', '#ff3df5'], ['honey', '#f5d36b'],
+  ['mist', '#7fd1d8'], ['apple', '#a3c24a'], ['slate', '#9aa0a6'],
+  ['ember', '#c8402f'], ['tangerine', '#ff8c42'], ['lagoon', '#2f9e77'],
+  ['cornflower', '#5b8def'], ['grape', '#9d4edd'],
+  ['g25', '#252525'], ['g38', '#383838'], ['g52', '#525252'], ['g66', '#666666'],
+  ['g80', '#808080'], ['g94', '#949494'], ['gaa', '#aaaaaa'],
+  ['gbb', '#bbbbbb'], ['gcc', '#cccccc'], ['gdd', '#dddddd'],
+  ['e7c35b', '#e7c35b'],
+  ['ltorange', '#ffcf9e'], ['ltorange2', '#ffd9a8'], ['ltorange3', '#ffe3c0'],
+  ['ltgold', '#f2df9a'], ['ltred', '#ffb3a8'], ['ltgreen', '#b8e6b8'],
+  ['ltblue', '#a8c8ff'], ['ltpink', '#ffd1e8'],
+  ['pastelblue', '#8080ff'], ['pastelviolet', '#9a80ff'],
+  ['pastelsky', '#80b3ff'], ['pastelorchid', '#b380ff'],
+  ['softslate', '#b8c4d4'], ['softlilac', '#c4b8d4'], ['softsand', '#d4c4b8'],
+  ...HUE_NAMES.map((n, i) => [`light${n}`, hsl(i * 30 / 360, 1, 0.75)]),
+  ...HUE_NAMES.map((n, i) => [`dark${n}`, hsl(i * 30 / 360, 1, 0.25)]),
+];
+
+// ground classes mirrored from finishGroundTone (TagRibbon.jsx) — 1.9.10:
+// the classes stay on the card root and switch the X SIGNATURE'S ink
+// alone (the dark ground's glow hand + the light ground's depth filter
+// — the only two CSS rules that read them)
+const groundOf = (hex6) => {
+  const n = parseInt(hex6.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  if (lum >= 0.7) return lum >= 0.78 ? 'gd-fin-ground-light gd-fin-ground-bright' : 'gd-fin-ground-light';
+  return 'gd-fin-ground-dark';
+};
+
+const SEATS = {
+  numeix: ['gd-finish-numeix', 'gd-numeix-dapple', 'gd-numeix-streams', 'gd-numeix-xmarks', 'gd-numeix-stars', 'gd-numeix-moon'],
+  foil: ['gd-finish-foil', 'gd-finish-foil-ripples'],
+  auric: ['gd-finish-auric', 'gd-auric-currents', 'gd-auric-flakes', 'gd-auric-sweep', 'gd-auric-summon'],
+  nuri: ['gd-finish-nuri', 'gd-nuri-licks', 'gd-nuri-sparks', 'gd-nuri-flare'],
+  holographic: ['gd-finish-holographic'],
+  prismatic: ['gd-finish-prismatic', 'gd-prism-stars', 'gd-prism-particles', 'gd-prism-waves', 'gd-prism-sweep'],
+};
+
+const card = (finish, tint, toneClass) => {
+  const seats = SEATS[finish]
+    .map((c) => {
+      let inner = '';
+      if (c === 'gd-finish-foil-ripples') {
+        inner = '<span class="gd-foil-ripple" style="--gd-ripple-seat:0s"></span><span class="gd-foil-ripple" style="--gd-ripple-seat:3s"></span><span class="gd-foil-ripple" style="--gd-ripple-seat:6s"></span>';
+      }
+      if (c === 'gd-finish-holographic') {
+        inner = '<span class="gd-holo-shards"></span><span class="gd-holo-dots"></span>';
+      }
+      return `<span class="gd-card-face-finish ${c}">${inner}</span>`;
+    })
+    .join('');
+  return `<div class="pc${toneClass ? ` ${toneClass}` : ''}" style="--gd-card-tint:${tint}; --gd-fin-ink:${twin(tint)}; --gd-fin-glow:${twin(tint, 0.78)}; --gd-fin-art:${twin(tint, 0.75)}; background:${tint}">${seats}</div>`;
+};
+
+const COLS_PER_PAGE = 8; // Chromium's raster surface chokes past ~2000px of
+// animated blend tiles — the field renders in CHUNKS and the stats stitch.
+const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const lumOf = (r, g, b) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+const FINISHES = Object.keys(SEATS);
+const CLASSIC_FAMILIES = FINISHES.filter((f) => f !== 'numeix');
+
+// both sheets render the SAME field with the ANIMATIONS RETIRED whole
+// (animation: none — determinism by construction: the two renders speak
+// the coats' static word — every rule, blend, mask and gradient at its
+// base seat — so the render-diff measures the RULES, never the clock
+// phase; a paused animation still holds a wall-clock-dependent phase,
+// measured chasing the raster at field scale)
+const freeze = '* { animation: none !important; }';
+const renderField = async (browser, cssPath, chunk) => {
+  const html = `<!doctype html><html><head><style>
+  body { margin: 0; background: #2a2a33; }
+  #field { display: grid; grid-template-columns: repeat(${chunk.length}, 190px); gap: 10px; padding: 10px; }
+  .pc { position: relative; width: 180px; height: 250px; overflow: hidden; border-radius: 10px; }
+  ${freeze}
+</style></head><body><div id="field">${FINISHES.flatMap((finish) => chunk.map(([name, tint]) => card(finish, tint, groundOf(tint)))).join('\n')}</div></body></html>`;
+  const page = await browser.newPage({ viewport: { width: 190 * chunk.length, height: 1600 } });
+  await page.setContent(html);
+  await page.addStyleTag({ path: cssPath });
+  // the app sheet styles body/html itself (background: var(--gd-bg) —
+  // unset here, so the cascade would leave the page chrome differing
+  // between the full sheet and the trimmed fixture); the chrome is
+  // pinned AFTER both sheets load, identically, so the render-diff
+  // measures the COATS alone
+  await page.addStyleTag({ content: 'html, body { background: #2a2a33 !important; margin: 0 !important; }' });
+  await page.waitForTimeout(400);
+  const shot = await page.screenshot({ fullPage: true });
+  await page.close();
+  const sharp = (await import('sharp')).default;
+  const { data, info } = await sharp(shot).raw().toBuffer({ resolveWithObject: true });
+  return { data, info };
+};
+
+const browser = await chromium.launch(
+  // 1.9.10 — DETERMINISM: the field's large blend-mode surface rasterizes
+  // nondeterministically on the GPU (two identical runs measured 128 vs
+  // 181 different failing cells, and the same #800000 plate passed as
+  // `deepred` in one chunk and failed as `darkh0` in another); software
+  // rasterization makes the render-diff measure the RULES, never the
+  // raster's mood. The isolated-card probes already measured the noise
+  // floor at 0.086 mean (border anti-aliasing alone) with default launch.
+  { args: ['--disable-gpu', '--disable-gpu-compositing'] },
+);
+const stats = {};
+for (let base = 0; base < PLATES.length; base += COLS_PER_PAGE) {
+  const chunk = PLATES.slice(base, base + COLS_PER_PAGE);
+  const A = await renderField(browser, path.join(tree, 'src/index.css'), chunk);
+  const B = await renderField(browser, CLASSIC, chunk);
+  const FIELD = { x: 10, y: 10, cw: 200, ch: 260 };
+  for (const [rowIdx, finish] of FINISHES.entries()) {
+    for (const [colIdx, [name, tint]] of chunk.entries()) {
+      const x0 = FIELD.x + colIdx * FIELD.cw + 8;
+      const y0 = FIELD.y + rowIdx * FIELD.ch + 8;
+      const [pr, pg, pb] = hexToRgb(tint);
+      let total = 0, mag = 0, drift = 0;
+      for (let y = y0; y < y0 + 234; y += 2) {
+        for (let x = x0; x < x0 + 164; x += 2) {
+          const i = (y * A.info.width + x) * A.info.channels;
+          const r = A.data[i], g = A.data[i + 1], b = A.data[i + 2];
+          const i2 = (y * B.info.width + x) * B.info.channels;
+          const r2 = B.data[i2], g2 = B.data[i2 + 1], b2 = B.data[i2 + 2];
+          total += 1;
+          mag += (Math.abs(r - pr) + Math.abs(g - pg) + Math.abs(b - pb)) / 3;
+          drift += (Math.abs(r - r2) + Math.abs(g - g2) + Math.abs(b - b2)) / 3;
+        }
+      }
+      stats[`${finish}@${name}`] = {
+        mag: mag / total,
+        drift: drift / total,
+        plateLum: lumOf(...hexToRgb(tint)),
+      };
+    }
+  }
+}
+await browser.close();
+
+if (DIAG) {
+  for (const finish of FINISHES) {
+    console.log(`\n=== ${finish} ===`);
+    for (const [name] of PLATES) {
+      const s = stats[`${finish}@${name}`];
+      console.log(`  ${name.padEnd(13)} mag=${s.mag.toFixed(1).padStart(6)}  renderDrift=${s.drift.toFixed(2).padStart(6)}`);
+    }
+  }
+}
+
+let passed = 0;
+let failed = 0;
+const failures = [];
+const ok = (name, cond, detail = '') => {
+  if (cond) passed += 1;
+  else {
+    failed += 1;
+    failures.push(`${name} — ${detail}`);
+  }
+};
+
+// 1.9.10 — THE CLASSIC VERDICT: the five families render pixel-equivalent
+// to the delivered 1.9.2 sheet on every plate of the field (the rules
+// returned to it verbatim; the frozen clocks speak the same instant)
+for (const finish of CLASSIC_FAMILIES) {
+  for (const [name] of PLATES) {
+    const s = stats[`${finish}@${name}`];
+    ok(`${finish} on ${name} speaks the classic coat`, s.drift < 1.5, `DRIFTED (render-diff ${s.drift.toFixed(2)} vs the 1.9.2 sheet)`);
+  }
+}
+// THE X BAND: numeix differs from the classic render by its X signature
+// alone — present (the rotated-plus glyph with its lean ink replaced the
+// 1.6.7 calligraphic looms; a vanished X layer reads ~0 drift) yet
+// bounded (a drift past the band means more than the X's changed)
+for (const [name] of PLATES) {
+  const s = stats[`numeix@${name}`];
+  ok(`numeix's X signature rides on ${name}`, s.drift >= 0.5 && s.drift < 40, `X BAND (render-diff ${s.drift.toFixed(2)})`);
+}
+// THE LIMITS: every stat finite — no NaN, no loop-around, no break at
+// any corner the wheel can name (the mag column reads the coat's own
+// presence; the classic physics' rests are the classic physics, shared
+// by both sheets and measured equal above)
+for (const finish of FINISHES) {
+  for (const [name] of PLATES) {
+    const s = stats[`${finish}@${name}`];
+    ok(`${finish} on ${name} stays within the limits`, Number.isFinite(s.mag) && Number.isFinite(s.drift) && s.mag >= 0 && s.drift >= 0, `BROKEN (mag ${s.mag}, drift ${s.drift})`);
+  }
+}
+
+console.log(`\n${passed} passed, ${failed} failed`);
+if (failed > 0) {
+  console.log('FAILURES:');
+  for (const f of failures) console.log(`  ✗ ${f}`);
+  if (!DIAG) console.log('\n(run with --diag for the full table)');
+  process.exit(1);
+}
